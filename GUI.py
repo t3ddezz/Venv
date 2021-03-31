@@ -3,7 +3,7 @@ import sys
 import sys ; sys.setrecursionlimit(sys.getrecursionlimit() * 5)
 print(sys.path)
 from PyQt5 import QtWidgets, QtCore, QtGui
-from PyQt5.QtWidgets import QApplication, QMainWindow, QInputDialog,  QFileDialog, QFrame
+from PyQt5.QtWidgets import QApplication, QMainWindow, QInputDialog,  QFileDialog, QFrame, QMessageBox
 from PyQt5.QtGui import QPalette, QColor, QIcon
 from PyQt5.QtCore import Qt
 import pandas as pd
@@ -11,6 +11,10 @@ import io
 import requests
 import os.path
 from datetime import datetime
+import paramiko
+import socket
+import time
+import os
 
 class Validator(QtGui.QValidator):
     def validate(self, string, pos):
@@ -289,28 +293,33 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
         self.window2 = Window2()#for initiating window2
     
         self.upper_frame = QtWidgets.QFrame(self)
-        self.upper_frame.setFixedWidth(140)
-        self.upper_frame.setFixedHeight(150)
-        self.upper_frame.move(5, 10)
+        self.upper_frame.setFixedWidth(210)
+        self.upper_frame.setFixedHeight(145)
+        self.upper_frame.move(2, 25)
         self.upper_frame.setFrameShape(QFrame.StyledPanel)
         self.upper_frame.setFrameShadow(QFrame.Raised)
 
         self.mid_frame = QtWidgets.QFrame(self)
         self.mid_frame.setFixedWidth(210)
         self.mid_frame.setFixedHeight(130)
-        self.mid_frame.move(5, 170)
+        self.mid_frame.move(2, 175)
         self.mid_frame.setFrameShape(QFrame.StyledPanel)
         self.mid_frame.setFrameShadow(QFrame.Raised)
 
         self.password = QtWidgets.QLineEdit(self)
-        self.password.move(10, 450)
+        self.password.move(260, 400)
         self.password.setPlaceholderText('password')
         self.password.setEchoMode(QtWidgets.QLineEdit.Password)
 
         self.checkbox_hide_unhide = QtWidgets.QCheckBox('show',self)
         self.checkbox_hide_unhide.adjustSize()
         self.checkbox_hide_unhide.stateChanged.connect(self.checkbox)
-        self.checkbox_hide_unhide.move(115, 455 )
+        self.checkbox_hide_unhide.move(370, 405)
+
+        self.label_sonderzeichen = QtWidgets.QLabel(self)
+        self.label_sonderzeichen.setText(':')
+        self.label_sonderzeichen.adjustSize()
+        self.label_sonderzeichen.move(250, 406)
         
 
         
@@ -321,8 +330,8 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
         
         
         self.kitinfos_label = QtWidgets.QLabel(self)
-        self.kitinfos_label.move(10, 10)
-        self.kitinfos_label.setText('kitinfos')
+        self.kitinfos_label.move(10, 25)
+        self.kitinfos_label.setText('Ligation kit:')
 
         self.sequencing_edit = QtWidgets.QLineEdit(self)
         self.sequencing_edit.setPlaceholderText('e.g SQK-PCB109')
@@ -331,24 +340,39 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
         self.sequencing_edit.move(10, 50)
         self.validator = Validator(self)
         self.sequencing_edit.setValidator(self.validator)
+        #self.sequencing_edit.textChanged[str].connect(self.sequencing_changed)
+        self.sequencing_edit.editingFinished.connect(self.sequencing_changed)
 
+        self.barcode_label = QtWidgets.QLabel(self)
+        self.barcode_label.move(10, 77)
+        self.barcode_label.setText('Barcode kit (optional):')
+        self.barcode_label.adjustSize()
+
+        
         self.barcode_edit = QtWidgets.QLineEdit(self)
         self.barcode_edit.setPlaceholderText('e.g EXP-PBC096')
         self.barcode_edit.adjustSize()
-        self.barcode_edit.move(10, 90)
+        self.barcode_edit.move(10, 95)
         self.validator = Validator(self)
         self.barcode_edit.setValidator(self.validator)
+        #self.barcode_edit.textChanged[str].connect(self.barcode_changed)
+        self.barcode_edit.editingFinished.connect(self.barcode_changed)
+        
+        self.flowcell_label = QtWidgets.QLabel(self)
+        self.flowcell_label.move(10, 115)
+        self.flowcell_label.setText('Flowcell:')
 
         self.flowcell_edit = QtWidgets.QLineEdit(self)
         self.flowcell_edit.setPlaceholderText('e.g FLO-MIN106')
         self.flowcell_edit.adjustSize()
-        self.flowcell_edit.move(10, 130)
+        self.flowcell_edit.move(10, 140)
         self.validator = Validator(self)
         self.flowcell_edit.setValidator(self.validator)
+        self.flowcell_edit.editingFinished.connect(self.flowcell_changed)
 
         self.barcodes_label = QtWidgets.QLabel(self)
-        self.barcodes_label.setText('barcodes?')
-        self.barcodes_label.move(10, 170)
+        self.barcodes_label.setText('Barcodes?')
+        self.barcodes_label.move(10, 175)
 
         
         self.radiobutton_no = QtWidgets.QRadioButton(self)# round button (grouped with radiobutton_yes)- only one can be selected
@@ -360,26 +384,36 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
 
         self.radiobutton_yes = QtWidgets.QRadioButton(self)
         self.radiobutton_yes.toggled.connect(self.radioclicked_yes)
-        self.radiobutton_yes.move(70, 200)
+        self.radiobutton_yes.move(10, 220)
         self.label_radiobutton_yes = QtWidgets.QLabel(self)
-        self.label_radiobutton_yes.setText('yes')
-        self.label_radiobutton_yes.move(90, 200)
+        self.label_radiobutton_yes.setText('yes (12)')
+        self.label_radiobutton_yes.move(30, 220)
+
+        self.test_upload_variable = QtWidgets.QLabel(self)
+        self.test_upload_variable.setHidden(True)
+
+        self.radiobutton_24_samples = QtWidgets.QRadioButton(self)
+        self.radiobutton_24_samples.toggled.connect(self.clickbox)
+        self.radiobutton_24_samples.move(10, 240)
+        self.samples_24_label = QtWidgets.QLabel(self)
+        self.samples_24_label.setText('yes (24)')
+        self.samples_24_label.move(30, 240)
+
+        self.radiobutton_sample_sheet = QtWidgets.QRadioButton(self)
+        self.radiobutton_sample_sheet.toggled.connect(self.clickbox2)
+        self.radiobutton_sample_sheet.move(10, 260)
+        self.sample_sheet_label = QtWidgets.QLabel(self)
+        self.sample_sheet_label.setText('yes (sample sheet)')
+        self.sample_sheet_label.move(30, 265)
+        self.sample_sheet_label.resize(150, 20)
 
 
-
-
-        self.checkbox = QtWidgets.QCheckBox("24-sample names",self)
-        self.checkbox.adjustSize()
-        self.checkbox.stateChanged.connect(self.clickbox)
-        self.checkbox.move(70, 230)
-        self.checkbox.setDisabled(True)
-
-        self.checkbox_95 = QtWidgets.QCheckBox("96-sample names",self)
-        self.checkbox_95.adjustSize()
-        self.checkbox_95.stateChanged.connect(self.clickbox2)
-        self.checkbox_95.move(70, 250)
-        self.checkbox_95.setDisabled(True)
-
+        self.radiobutton_group = QtWidgets.QButtonGroup(self)
+        self.radiobutton_group.addButton(self.radiobutton_yes)
+        self.radiobutton_group.addButton(self.radiobutton_no)
+        self.radiobutton_group.addButton(self.radiobutton_24_samples)
+        self.radiobutton_group.addButton(self.radiobutton_sample_sheet)
+        
         self.download_template = QtWidgets.QPushButton(self)
         self.download_template.setText('download template')
         self.download_template.setDisabled(True)
@@ -399,18 +433,6 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
         self.upload_data.move(290,140)
         #self.upload_data.adjustSize()
         self.upload_data.setHidden(True)
-        
-
-        self.upload_user_preinfo = QtWidgets.QPushButton(self)
-        self.upload_user_preinfo.move(10, 350)
-        self.upload_user_preinfo.setText('upload user info')
-        self.upload_user_preinfo.setToolTip('Here you can upload your user info, if you already fulfilled it one time')
-        self.upload_user_preinfo.adjustSize()
-        self.setStyleSheet("""QToolTip { 
-                           background-color: black; 
-                           color: white; 
-                           border: black solid 1px}""")
-        self.upload_user_preinfo.clicked.connect(self.user_info_upload)
 
 
         
@@ -425,7 +447,7 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
         self.lineedit_ip_adress = QtWidgets.QLineEdit(self)
         self.lineedit_ip_adress.move(125, 400)
         self.lineedit_ip_adress.setPlaceholderText('ip-adress')
-        #self.label_ip_adress.adjustSize()
+        self.lineedit_ip_adress.resize(120, 30)
 
         self.label_at = QtWidgets.QLabel(self)
         self.label_at.move(112, 407)
@@ -433,23 +455,26 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
         self.label_at.adjustSize()
 
         self.lineedit_path = QtWidgets.QLineEdit(self)
-        self.lineedit_path.move(230, 400)
-        self.lineedit_path.setPlaceholderText('/path/xy')
-        #self.lineedit_path.adjustSize()
+        self.lineedit_path.move(10, 440)
+        self.lineedit_path.setPlaceholderText('/path/on/server')
+        self.lineedit_path.resize(235, 30)
+
+        self.lineedit_path_dir = QtWidgets.QLineEdit(self)
+        self.lineedit_path_dir.move(10, 500)
+        self.lineedit_path_dir.setPlaceholderText('/path/to/dir')
+        self.lineedit_path_dir.resize(235, 30)
+
+
 
         self.button_test = QtWidgets.QPushButton(self)
-        self.button_test.move(340, 400)
-        self.button_test.setText('test upload')
+        self.button_test.move(260, 440)
+        self.button_test.setText('test connection')
         self.button_test.clicked.connect(self.test_upload)
 
 
         self.textedit = QtWidgets.QTextEdit(self)#little edit field to add additional info
-        self.textedit.setPlaceholderText('add additional informations')
-        self.textedit.setGeometry(340, 435, 300, 160)
-
-
-        
-
+        self.textedit.setPlaceholderText('Additional information,  this info will be uploaded to the server with run_info.txt')
+        self.textedit.setGeometry(430, 400, 365, 195)
 
         Flowcell_liste = ['FLO-MIN106']
 
@@ -459,14 +484,13 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
         self.label_barcode_yes_no.setHidden(True)
 
     
-
-
         self.label1 = QtWidgets.QLabel(self)# labels for lineedits for the samples
         self.label1.setText('1')
         self.label1.move(275, 20)
         self.lineedit1 = QtWidgets.QLineEdit(self)
         self.lineedit1.move(290,20)
-        self.lineedit1.setFixedWidth(120)
+        #self.lineedit1.setFixedWidth(120)
+        self.lineedit1.resize(200, 30)
 
 
         self.label2 = QtWidgets.QLabel(self)
@@ -476,7 +500,7 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
         self.lineedit2 = QtWidgets.QLineEdit(self)
         self.lineedit2.move(290,50)
         self.lineedit2.setHidden(True)
-        self.lineedit2.setFixedWidth(120)
+        self.lineedit2.resize(200, 30)
 
         
 
@@ -487,7 +511,7 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
         self.lineedit3 = QtWidgets.QLineEdit(self)
         self.lineedit3.move(290,80)
         self.lineedit3.setHidden(True)
-        self.lineedit3.setFixedWidth(120)
+        self.lineedit3.resize(200, 30)
 
 
         self.label4 = QtWidgets.QLabel(self)
@@ -497,7 +521,7 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
         self.lineedit4 = QtWidgets.QLineEdit(self)
         self.lineedit4.move(290,110)
         self.lineedit4.setHidden(True)
-        self.lineedit4.setFixedWidth(120)
+        self.lineedit4.resize(200, 30)
 
 
         self.label5 = QtWidgets.QLabel(self)
@@ -507,7 +531,7 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
         self.lineedit5 = QtWidgets.QLineEdit(self)
         self.lineedit5.move(290,140)
         self.lineedit5.setHidden(True)
-        self.lineedit5.setFixedWidth(120)
+        self.lineedit5.resize(200, 30)
 
 
         self.label6 = QtWidgets.QLabel(self)
@@ -517,7 +541,7 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
         self.lineedit6 = QtWidgets.QLineEdit(self)
         self.lineedit6.move(290,170)
         self.lineedit6.setHidden(True)
-        self.lineedit6.setFixedWidth(120)
+        self.lineedit6.resize(200, 30)
 
 
         self.label7 = QtWidgets.QLabel(self)
@@ -527,7 +551,7 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
         self.lineedit7 = QtWidgets.QLineEdit(self)
         self.lineedit7.move(290,200)
         self.lineedit7.setHidden(True)
-        self.lineedit7.setFixedWidth(120)
+        self.lineedit7.resize(200, 30)
 
         self.label8 = QtWidgets.QLabel(self)
         self.label8.setText('8')
@@ -536,7 +560,7 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
         self.lineedit8 = QtWidgets.QLineEdit(self)
         self.lineedit8.move(290,230)
         self.lineedit8.setHidden(True)
-        self.lineedit8.setFixedWidth(120)
+        self.lineedit8.resize(200, 30)
 
         self.label9 = QtWidgets.QLabel(self)
         self.label9.setText('9')
@@ -545,7 +569,7 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
         self.lineedit9 = QtWidgets.QLineEdit(self)
         self.lineedit9.move(290,260)
         self.lineedit9.setHidden(True)
-        self.lineedit9.setFixedWidth(120)
+        self.lineedit9.resize(200, 30)
 
         self.label10 = QtWidgets.QLabel(self)
         self.label10.setText('10')
@@ -554,7 +578,7 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
         self.lineedit10 = QtWidgets.QLineEdit(self)
         self.lineedit10.move(290,290)
         self.lineedit10.setHidden(True)
-        self.lineedit10.setFixedWidth(120)
+        self.lineedit10.resize(200, 30)
 
         self.label11 = QtWidgets.QLabel(self)
         self.label11.setText('11')
@@ -563,7 +587,7 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
         self.lineedit11 = QtWidgets.QLineEdit(self)
         self.lineedit11.move(290,320)
         self.lineedit11.setHidden(True)
-        self.lineedit11.setFixedWidth(120)
+        self.lineedit11.resize(200, 30)
 
         self.label12 = QtWidgets.QLabel(self)
         self.label12.setText('12')
@@ -572,134 +596,133 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
         self.lineedit12 = QtWidgets.QLineEdit(self)
         self.lineedit12.move(290,350)
         self.lineedit12.setHidden(True)
-        self.lineedit12.setFixedWidth(120)
+        self.lineedit12.resize(200, 30)
 
         self.label13 = QtWidgets.QLabel(self)
         self.label13.setText('13')
-        self.label13.move(415, 20)
+        self.label13.move(498, 20)
         self.label13.setHidden(True)
         self.lineedit13 = QtWidgets.QLineEdit(self)
-        self.lineedit13.move(430,20)
+        self.lineedit13.move(515, 20)
         self.lineedit13.setHidden(True)
-        self.lineedit13.setFixedWidth(120)
+        self.lineedit13.resize(200, 30)
 
         self.label14 = QtWidgets.QLabel(self)
         self.label14.setText('14')
-        self.label14.move(415, 50)
+        self.label14.move(498, 50)
         self.label14.setHidden(True)
         self.lineedit14 = QtWidgets.QLineEdit(self)
-        self.lineedit14.move(430,50)
+        self.lineedit14.move(515,50)
         self.lineedit14.setHidden(True)
-        self.lineedit14.setFixedWidth(120)
+        self.lineedit14.resize(200, 30)
 
         self.label15 = QtWidgets.QLabel(self)
         self.label15.setText('15')
-        self.label15.move(415, 80)
+        self.label15.move(498, 80)
         self.label15.setHidden(True)
         self.lineedit15 = QtWidgets.QLineEdit(self)
-        self.lineedit15.move(430, 80)
+        self.lineedit15.move(515, 80)
         self.lineedit15.setHidden(True)
-        self.lineedit15.setFixedWidth(120)
+        self.lineedit15.resize(200, 30)
         
         self.label16 = QtWidgets.QLabel(self)
         self.label16.setText('16')
-        self.label16.move(415, 110)
+        self.label16.move(498, 110)
         self.label16.setHidden(True)
         self.lineedit16 = QtWidgets.QLineEdit(self)
-        self.lineedit16.move(430, 110)
+        self.lineedit16.move(515, 110)
         self.lineedit16.setHidden(True)
-        self.lineedit16.setFixedWidth(120)
+        self.lineedit16.resize(200, 30)
         
         self.label17 = QtWidgets.QLabel(self)
         self.label17.setText('17')
-        self.label17.move(415, 140)
+        self.label17.move(498, 140)
         self.label17.setHidden(True)
         self.lineedit17 = QtWidgets.QLineEdit(self)
-        self.lineedit17.move(430, 140)
+        self.lineedit17.move(515, 140)
         self.lineedit17.setHidden(True)
-        self.lineedit17.setFixedWidth(120)
+        self.lineedit17.resize(200, 30)
         
         self.label18 = QtWidgets.QLabel(self)
         self.label18.setText('18')
-        self.label18.move(415, 170)
+        self.label18.move(498, 170)
         self.label18.setHidden(True)
         self.lineedit18 = QtWidgets.QLineEdit(self)
-        self.lineedit18.move(430, 170)
+        self.lineedit18.move(515, 170)
         self.lineedit18.setHidden(True)
-        self.lineedit18.setFixedWidth(120)
+        self.lineedit18.resize(200, 30)
         
         self.label19 = QtWidgets.QLabel(self)
         self.label19.setText('19')
-        self.label19.move(415, 200)
+        self.label19.move(498, 200)
         self.label19.setHidden(True)
         self.lineedit19 = QtWidgets.QLineEdit(self)
-        self.lineedit19.move(430, 200)
+        self.lineedit19.move(515, 200)
         self.lineedit19.setHidden(True)
-        self.lineedit19.setFixedWidth(120)
+        self.lineedit19.resize(200, 30)
         
         self.label20 = QtWidgets.QLabel(self)
         self.label20.setText('20')
-        self.label20.move(415, 230)
+        self.label20.move(498, 230)
         self.label20.setHidden(True)
         self.lineedit20 = QtWidgets.QLineEdit(self)
-        self.lineedit20.move(430, 230)
+        self.lineedit20.move(515, 230)
         self.lineedit20.setHidden(True)
-        self.lineedit20.setFixedWidth(120)
+        self.lineedit20.resize(200, 30)
         
         self.label21 = QtWidgets.QLabel(self)
         self.label21.setText('21')
-        self.label21.move(415, 260)
+        self.label21.move(498, 260)
         self.label21.setHidden(True)
         self.lineedit21 = QtWidgets.QLineEdit(self)
-        self.lineedit21.move(430, 260)
+        self.lineedit21.move(515, 260)
         self.lineedit21.setHidden(True)
-        self.lineedit21.setFixedWidth(120)
+        self.lineedit21.resize(200, 30)
         
         self.label22 = QtWidgets.QLabel(self)
         self.label22.setText('22')
-        self.label22.move(415, 290)
+        self.label22.move(498, 290)
         self.label22.setHidden(True)
         self.lineedit22 = QtWidgets.QLineEdit(self)
-        self.lineedit22.move(430, 290)
+        self.lineedit22.move(515, 290)
         self.lineedit22.setHidden(True)
-        self.lineedit22.setFixedWidth(120)
+        self.lineedit22.resize(200, 30)
         
         self.label23 = QtWidgets.QLabel(self)
         self.label23.setText('23')
-        self.label23.move(415, 320)
+        self.label23.move(498, 320)
         self.label23.setHidden(True)
         self.lineedit23 = QtWidgets.QLineEdit(self)
-        self.lineedit23.move(430, 320)
+        self.lineedit23.move(515, 320)
         self.lineedit23.setHidden(True)
-        self.lineedit23.setFixedWidth(120)
+        self.lineedit23.resize(200, 30)
         
         self.label24 = QtWidgets.QLabel(self)
         self.label24.setText('24')
-        self.label24.move(415, 350)
+        self.label24.move(498, 350)
         self.label24.setHidden(True)
         self.lineedit24 = QtWidgets.QLineEdit(self)
-        self.lineedit24.move(430, 350)
+        self.lineedit24.move(515, 350)
         self.lineedit24.setHidden(True)
-        self.lineedit24.setFixedWidth(120)
+        self.lineedit24.resize(200, 30)
 
         
 
         self.button_checkdata = QtWidgets.QPushButton(self)#button to insepct data
         self.button_checkdata.setText('check data')
-        self.button_checkdata.move(40, 510)
+        self.button_checkdata.move(40, 320)
         self.button_checkdata.setWhatsThis('check your data')
-        #self.button_checkdata.clicked.connect(self.clicked)
-        #self.button_checkdata.clicked.connect(self.window2)
-        #self.button_checkdata.clicked.connect(self.uplaod)
-        #self.button_checkdata.clicked.connect(self.passinginfo)
         self.button_checkdata.clicked.connect(self.passinInformation)#function to open another window
 
-
         
+        self.button_dir = QtWidgets.QPushButton(self)
+        self.button_dir.setText('choose dir')
+        self.button_dir.move(260, 500)
+        self.button_dir.clicked.connect(self.upload)
 
 
         self.button_upload = QtWidgets.QPushButton(self)
-        self.button_upload.setText('choose dir')
+        self.button_upload.setText('Upload')
         self.button_upload.move(40, 560)
         self.button_upload.setDisabled(True)
         self.button_upload.setToolTip('check data first, to enable upload')
@@ -708,11 +731,8 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
                            color: white; 
                            border: black solid 1px
                            }""")
-        #self.button_upload.setEnabled(False)
-        self.button_upload.clicked.connect(self.upload)
-    
         
-
+    
         
         kitliste = ['Select Kit','SQK-PCB109','SQK-RNA002','SQK-PCS109','SQK-DCS109','SQK-CS9109','SQK-LSK109','SQK-LSK109-XL','SQK-16S024','SQK-LSK110',
         'SQK-LRK001','SQK-RBK004','SQK-PBK004','SQK-RAB204','SQK-RPB004','SQK-PSK004','SQK-RAD004'] 
@@ -720,9 +740,25 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
         self.labelupload.setText('')
         self.labelupload.setHidden(True)
 
+        try:
+            
+            user_pre_info = open('/Users/T3ddezz/Desktop/Venv/GUI/user_info.txt','r')
+            
+            data_list = user_pre_info.read().splitlines()
+            print(data_list)
+            self.lineedit_username.setText(data_list[0])
+            self.lineedit_path.setText(data_list[2])
+            self.lineedit_ip_adress.setText(data_list[1])
+        
+            user_pre_info.close()
+            self.test_upload_variable.setText('true')
+        except IndexError:
+            print('UPS')
+
+
     def upload(self, state):#function to upload files and create run_info.txt
         pass
-        '''dialog = QFileDialog()
+        dialog = QFileDialog()
         save_path = dialog.getExistingDirectory(self, 'Select an  directory')
         
         
@@ -825,77 +861,172 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
                         demo.write('    ')
                         demo.write(liste[i])
                         demo.write('\n')
-                        a = a + 1'''
+                        a = a + 1
             
             
                     
         
-        '''additional_info = self.textedit.toPlainText()
+        additional_info = self.textedit.toPlainText()
         print(additional_info)
-        demo.write('##')
-        demo.write('\n')
+        
         demo.write('##additional info')
         demo.write('\n')
-        demo.write('##')
-        demo.write(additional_info)'''
+        #demo.write('##')
+        demo.write(additional_info)
 
 
         #/n zeilenumbruch
-        '''demo.close()'''
-        '''date = datetime.today().strftime('%Y-%m-%d')
+        demo.close()
+
+        date = datetime.today().strftime('%Y-%m-%d')
         folder_name = os.path.basename(os.path.normpath(f'{save_path}'))
         neuer_ordner_name = date + '_' + folder_name
-        os.system(f'rsync -a {save_path} ~/Desktop/test_server/{neuer_ordner_name}')'''
-        
+        #check if rsync is avaible if yes then command (which rsync oder rsync -v)
+        os.system(f'rsync --rsync-path="/bin/rsync" -acr --remove-source-files "{save_path}" "~/Desktop/test_server/{neuer_ordner_name}"')
+        #else scp
 
+        # ftp (optional optional)
+        
+    def sequencing_changed(self):
+
+        url="https://raw.githubusercontent.com/t3ddezz/data/main/sequencing_data.txt"
+        re=requests.get(url).content
+        sequencing=pd.read_csv(io.StringIO(re.decode('utf-8')),sep='\t',index_col=False,header=None)
+
+        kit_input = self.sequencing_edit.text()
+        länge = len(sequencing)
+        zähler = 0
+        kit = 0
+
+        for i in range(länge):
+            if  kit_input == sequencing.loc[zähler,0]:
+                kit = 1
+                break
+    
+            else: 
+                zähler = zähler + 1
+        if kit == 0:
+            msg = QMessageBox()
+            msg.setWindowTitle("sequencing input")
+            msg.setText("Something is wrong with your input!")
+            x = msg.exec_()  # this will show our messagebox
+            msg.setIcon(QMessageBox.Critical)
+            self.sequencing_edit.clear()
+            
+    def barcode_changed(self):
+        pass
+
+    def flowcell_changed(self):
+        url="https://raw.githubusercontent.com/t3ddezz/data/main/flowcell_data.txt"
+        re=requests.get(url).content
+        flowcell=pd.read_csv(io.StringIO(re.decode('utf-8')),sep='\t',index_col=False,header=None)
+
+        flow_input = self.flowcell_edit.text()
+        länge = len(flowcell)
+        zähler = 0
+        kit = 0
+
+        for i in range(länge):
+            if  flow_input == flowcell.loc[zähler,0]:
+                kit = 1
+                break
+    
+            else: 
+                zähler = zähler + 1
+        if kit == 0:
+            msg = QMessageBox()
+            msg.setWindowTitle("flowcell input")
+            msg.setText("Something is wrong with your input!")
+            x = msg.exec_()  # this will show our messagebox
+            msg.setIcon(QMessageBox.Critical)
+            self.flowcell_edit.clear()
+        
     def test_upload(self):
         #dialog = QFileDialog()
         #save_path = dialog.getExistingDirectory(self, 'Select an  directory')
         
         
-        completeInfo = os.path.join('/Users/T3ddezz/Desktop/test_server',  'user_info.txt')
+        #completeInfo = os.path.join('/Users/T3ddezz/Desktop/test_server',  'user_info.txt')
     
-        
         username = self.lineedit_username.text()
-        ip_adress = self.lineedit_ip_adress.text()
+        print(username)
+        ip = self.lineedit_ip_adress.text()
+        print(ip)
         path = self.lineedit_path.text()
+        print(path)
+        password = self.password.text()
 
-        user_info = open(completeInfo, "w")
+        
+
+        user_info = open('user_info.txt', "w+")
+
+        user_info.truncate(0)
         
         user_info.write(username)
         user_info.write('\n')
-        user_info.write(ip_adress)
+        user_info.write(ip)
         user_info.write('\n')
         user_info.write(path)
 
         user_info.close()
 
-    def user_info_upload(self):
-        user_pre_info = open('/Users/T3ddezz/Desktop/test_server/user_info.txt','r')
-        all_lines = user_pre_info.readlines()
-        username = all_lines[0]
-        ip_adress = all_lines[1]
-        path = all_lines[2]
+        try:
+            #ip = '141.35.69.19'
+            port = 22
+            #username = 'mike'
+            #password = 'De-Phage18'
+
+            cmd = 'ls'
+            cmd2 = 'ls -d ' + path 
+
+            ssh = paramiko.SSHClient()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(ip ,port ,username ,password, timeout=10)
+            stdin,stdout,stderr = ssh.exec_command(cmd)
+            print (stdout.channel.recv_exit_status())
+            time.sleep(5)
+            outlines = stdout.readlines()
+            resp = ''.join(outlines)
+            print(resp)
+
+            stdin,stdout,stderr = ssh.exec_command(cmd2)
+            print (stdout.channel.recv_exit_status())
+            time.sleep(5)
+            outlines = stdout.readlines()
+            resp = ''.join(outlines)
+            print(resp)
+
+
+            print(path in resp)#string doesnt have to match exactly at moment
+            msg = QMessageBox()
+            msg.setWindowTitle("test upload")
+            if path in resp:
+                msg = QMessageBox()
+                msg.setWindowTitle("test upload")
+                msg.setText("test_upload succesfull")
+                x = msg.exec_()  # this will show our messagebox
+                msg.setIcon(QMessageBox.Information)
+            else:
+                msg1 = QMessageBox()
+                msg1.setWindowTitle("test upload")
+                msg1.setText("path doesnt exist")
+                x = msg1.exec_()  # this will show our messagebox
+                msg1.setIcon(QMessageBox.Critical)
+                
+
+    
+        except paramiko.AuthenticationException:
+            print('wrong password or username')
+        except socket.error:
+            print('wrong ip ')
         
-        self.lineedit_username.setText(username)
-        self.lineedit_path.setText(path)
-        self.lineedit_ip_adress.setText(ip_adress)
-        
-        user_pre_info.close()
 
 
     def radioclicked_no(self):# 
         self.window2.hide()
         self.window2.hide2()
         self.labelupload.setText('no')
-        #self.combobox_bar.setDisabled(True)
         self.label_barcode_yes_no.setText('no')
-        self.checkbox.setChecked(False)
-        self.checkbox.setDisabled(True)
-        self.checkbox_95.setChecked(False)
-        self.checkbox_95.setDisabled(True)
-        #self.textedit.setDisabled(False)
-        #self.textedit.setHidden(False)
         self.label1.setHidden(False)
         self.label2.setHidden(True)
         self.label3.setHidden(True)
@@ -920,14 +1051,39 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
         self.lineedit10.setHidden(True)
         self.lineedit11.setHidden(True)
         self.lineedit12.setHidden(True)
+        self.label13.setHidden(True)
+        self.lineedit13.setHidden(True)
+        self.label14.setHidden(True)
+        self.lineedit14.setHidden(True)
+        self.label15.setHidden(True)
+        self.lineedit15.setHidden(True)
+        self.label16.setHidden(True)
+        self.lineedit16.setHidden(True)
+        self.label17.setHidden(True)
+        self.lineedit17.setHidden(True)
+        self.label18.setHidden(True)
+        self.lineedit18.setHidden(True)
+        self.label19.setHidden(True)
+        self.lineedit19.setHidden(True)
+        self.label20.setHidden(True)
+        self.lineedit20.setHidden(True)
+        self.label21.setHidden(True)
+        self.lineedit21.setHidden(True)
+        self.label22.setHidden(True)
+        self.lineedit22.setHidden(True)
+        self.label23.setHidden(True)
+        self.lineedit23.setHidden(True)
+        self.label24.setHidden(True)
+        self.lineedit24.setHidden(True)
+        self.download_template.setHidden(True)
+        self.upload_data.setHidden(True)
+   
     def radioclicked_yes(self):
 
         self.window2.hide()
         self.window2.unhide2()
         self.labelupload.setText('yes')
         self.label_barcode_yes_no.setText('yes')
-        self.checkbox.setDisabled(False)
-        self.checkbox_95.setDisabled(False)
         #self.checkbox.setHidden(False)
         #self.textedit.setDisabled(True)
         #self.textedit.setHidden(True)
@@ -955,35 +1111,142 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
         self.lineedit10.setHidden(False)
         self.lineedit11.setHidden(False)
         self.lineedit12.setHidden(False)
-    def clickbox(self, state):
-        if state == QtCore.Qt.Checked:
-            self.checkbox_95.setChecked(False)
-            self.label13.setHidden(False)
-            self.lineedit13.setHidden(False)
-            self.label14.setHidden(False)
-            self.lineedit14.setHidden(False)
-            self.label15.setHidden(False)
-            self.lineedit15.setHidden(False)
-            self.label16.setHidden(False)
-            self.lineedit16.setHidden(False)
-            self.label17.setHidden(False)
-            self.lineedit17.setHidden(False)
-            self.label18.setHidden(False)
-            self.lineedit18.setHidden(False)
-            self.label19.setHidden(False)
-            self.lineedit19.setHidden(False)
-            self.label20.setHidden(False)
-            self.lineedit20.setHidden(False)
-            self.label21.setHidden(False)
-            self.lineedit21.setHidden(False)
-            self.label22.setHidden(False)
-            self.lineedit22.setHidden(False)
-            self.label23.setHidden(False)
-            self.lineedit23.setHidden(False)
-            self.label24.setHidden(False)
-            self.lineedit24.setHidden(False)
-            self.window2.unhide()
-        else:
+        self.label13.setHidden(True)
+        self.lineedit13.setHidden(True)
+        self.label14.setHidden(True)
+        self.lineedit14.setHidden(True)
+        self.label15.setHidden(True)
+        self.lineedit15.setHidden(True)
+        self.label16.setHidden(True)
+        self.lineedit16.setHidden(True)
+        self.label17.setHidden(True)
+        self.lineedit17.setHidden(True)
+        self.label18.setHidden(True)
+        self.lineedit18.setHidden(True)
+        self.label19.setHidden(True)
+        self.lineedit19.setHidden(True)
+        self.label20.setHidden(True)
+        self.lineedit20.setHidden(True)
+        self.label21.setHidden(True)
+        self.lineedit21.setHidden(True)
+        self.label22.setHidden(True)
+        self.lineedit22.setHidden(True)
+        self.label23.setHidden(True)
+        self.lineedit23.setHidden(True)
+        self.label24.setHidden(True)
+        self.lineedit24.setHidden(True)
+        self.download_template.setHidden(True)
+        self.upload_data.setHidden(True)
+
+    
+    def clickbox(self):
+        self.label13.setHidden(False)
+        self.lineedit13.setHidden(False)
+        self.label14.setHidden(False)
+        self.lineedit14.setHidden(False)
+        self.label15.setHidden(False)
+        self.lineedit15.setHidden(False)
+        self.label16.setHidden(False)
+        self.lineedit16.setHidden(False)
+        self.label17.setHidden(False)
+        self.lineedit17.setHidden(False)
+        self.label18.setHidden(False)
+        self.lineedit18.setHidden(False)
+        self.label19.setHidden(False)
+        self.lineedit19.setHidden(False)
+        self.label20.setHidden(False)
+        self.lineedit20.setHidden(False)
+        self.label21.setHidden(False)
+        self.lineedit21.setHidden(False)
+        self.label22.setHidden(False)
+        self.lineedit22.setHidden(False)
+        self.label23.setHidden(False)
+        self.lineedit23.setHidden(False)
+        self.label24.setHidden(False)
+        self.lineedit24.setHidden(False)
+        self.window2.unhide()
+
+        self.download_template.setHidden(True)
+        self.upload_data.setHidden(True)
+        self.label1.setHidden(False)
+        self.label2.setHidden(False)
+        self.label3.setHidden(False)
+        self.label4.setHidden(False)
+        self.label5.setHidden(False)
+        self.label6.setHidden(False)
+        self.label7.setHidden(False)
+        self.label8.setHidden(False)
+        self.label9.setHidden(False)
+        self.label10.setHidden(False)
+        self.label11.setHidden(False)
+        self.label12.setHidden(False)
+        self.lineedit1.setHidden(False)
+        self.lineedit2.setHidden(False)
+        self.lineedit3.setHidden(False)
+        self.lineedit4.setHidden(False)
+        self.lineedit5.setHidden(False)
+        self.lineedit6.setHidden(False)
+        self.lineedit7.setHidden(False)
+        self.lineedit8.setHidden(False)
+        self.lineedit9.setHidden(False)
+        self.lineedit10.setHidden(False)
+        self.lineedit11.setHidden(False)
+        self.lineedit12.setHidden(False)
+        '''
+        self.label13.setHidden(True)
+        self.lineedit13.setHidden(True)
+        self.label14.setHidden(True)
+        self.lineedit14.setHidden(True)
+        self.label15.setHidden(True)
+        self.lineedit15.setHidden(True)
+        self.label16.setHidden(True)
+        self.lineedit16.setHidden(True)
+        self.label17.setHidden(True)
+        self.lineedit17.setHidden(True)
+        self.label18.setHidden(True)
+        self.lineedit18.setHidden(True)
+        self.label19.setHidden(True)
+        self.lineedit19.setHidden(True)
+        self.label20.setHidden(True)
+        self.lineedit20.setHidden(True)
+        self.label21.setHidden(True)
+        self.lineedit21.setHidden(True)
+        self.label22.setHidden(True)
+        self.lineedit22.setHidden(True)
+        self.label23.setHidden(True)
+        self.lineedit23.setHidden(True)
+        self.label24.setHidden(True)
+        self.lineedit24.setHidden(True)
+        self.window2.hide()'''
+    
+    def clickbox2(self):
+        
+            self.download_template.setHidden(False)
+            self.upload_data.setHidden(False)
+            self.label1.setHidden(True)
+            self.label2.setHidden(True)
+            self.label3.setHidden(True)
+            self.label4.setHidden(True)
+            self.label5.setHidden(True)
+            self.label6.setHidden(True)
+            self.label7.setHidden(True)
+            self.label8.setHidden(True)
+            self.label9.setHidden(True)
+            self.label10.setHidden(True)
+            self.label11.setHidden(True)
+            self.label12.setHidden(True)
+            self.lineedit1.setHidden(True)
+            self.lineedit2.setHidden(True)
+            self.lineedit3.setHidden(True)
+            self.lineedit4.setHidden(True)
+            self.lineedit5.setHidden(True)
+            self.lineedit6.setHidden(True)
+            self.lineedit7.setHidden(True)
+            self.lineedit8.setHidden(True)
+            self.lineedit9.setHidden(True)
+            self.lineedit10.setHidden(True)
+            self.lineedit11.setHidden(True)
+            self.lineedit12.setHidden(True)
             self.label13.setHidden(True)
             self.lineedit13.setHidden(True)
             self.label14.setHidden(True)
@@ -1009,36 +1272,7 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
             self.label24.setHidden(True)
             self.lineedit24.setHidden(True)
             self.window2.hide()
-    def clickbox2(self,state):
-        if state == QtCore.Qt.Checked:
-            self.download_template.setHidden(False)
-            self.upload_data.setHidden(False)
-            self.checkbox.setChecked(False)
-            self.label1.setHidden(True)
-            self.label2.setHidden(True)
-            self.label3.setHidden(True)
-            self.label4.setHidden(True)
-            self.label5.setHidden(True)
-            self.label6.setHidden(True)
-            self.label7.setHidden(True)
-            self.label8.setHidden(True)
-            self.label9.setHidden(True)
-            self.label10.setHidden(True)
-            self.label11.setHidden(True)
-            self.label12.setHidden(True)
-            self.lineedit1.setHidden(True)
-            self.lineedit2.setHidden(True)
-            self.lineedit3.setHidden(True)
-            self.lineedit4.setHidden(True)
-            self.lineedit5.setHidden(True)
-            self.lineedit6.setHidden(True)
-            self.lineedit7.setHidden(True)
-            self.lineedit8.setHidden(True)
-            self.lineedit9.setHidden(True)
-            self.lineedit10.setHidden(True)
-            self.lineedit11.setHidden(True)
-            self.lineedit12.setHidden(True)
-        else:
+            '''
             self.download_template.setHidden(True)
             self.upload_data.setHidden(True)
             self.label1.setHidden(False)
@@ -1064,7 +1298,8 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
             self.lineedit9.setHidden(False)
             self.lineedit10.setHidden(False)
             self.lineedit11.setHidden(False)
-            self.lineedit12.setHidden(False)
+            self.lineedit12.setHidden(False)'''
+    
     def passinInformation(self):
         self.button_upload.setEnabled(True)
         self.window2.input000.setText(self.flowcell_edit.text())
@@ -1118,17 +1353,6 @@ class MyWindow(QMainWindow):#create a window through the initUI() method, and ca
 
 
 
-
-
-
-
-
-       
-
-            
-  
-                 
-    
 def window():
     app = QApplication(sys.argv)
     
